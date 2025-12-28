@@ -2,6 +2,12 @@
 
 TechGALAイベント用の画像ジェネレーターです。ユーザーがアップロードした画像を、管理者が設定したテンプレートと合成してオリジナル画像を作成できます。
 
+## ワンクリックデプロイ
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Frxzibit-ib%2Ftechgala-image-generator&env=AUTH_SECRET,ADMIN_ID,ADMIN_PASSWORD&envDescription=認証に必要な環境変数&envLink=https%3A%2F%2Fgithub.com%2Frxzibit-ib%2Ftechgala-image-generator%23環境変数&stores=%5B%7B%22type%22%3A%22blob%22%7D%5D)
+
+上のボタンをクリックして、自分のVercelアカウントにデプロイできます。
+
 ## 機能
 
 ### ユーザー向け
