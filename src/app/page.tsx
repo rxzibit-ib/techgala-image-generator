@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import Image from "next/image";
 
 interface ImageSettings {
   backgroundUrl: string | null;
@@ -20,9 +21,12 @@ export default function Home() {
   const [userImage, setUserImage] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [canShare, setCanShare] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -31,20 +35,61 @@ export default function Home() {
       .then((res) => res.json())
       .then((data) => setSettings(data))
       .catch(() => setError("設定の読み込みに失敗しました"));
+
+    // Web Share APIが使えるかチェック
+    setCanShare(typeof navigator !== "undefined" && !!navigator.share);
   }, []);
 
-  const handleFileSelect = useCallback((file: File) => {
-    if (!file.type.startsWith("image/")) {
+  const handleFileSelect = useCallback(async (file: File) => {
+    // HEIC/HEIFを含む画像ファイルを許可
+    const isImage = file.type.startsWith("image/") || 
+                    file.name.toLowerCase().endsWith(".heic") || 
+                    file.name.toLowerCase().endsWith(".heif");
+    
+    if (!isImage) {
       setError("画像ファイルを選択してください");
       return;
     }
 
+    setError(null);
+    setGeneratedImage(null);
+    setGeneratedBlob(null);
+
+    // HEIC/HEIFの場合はサーバーで変換
+    if (file.name.toLowerCase().endsWith(".heic") || 
+        file.name.toLowerCase().endsWith(".heif") ||
+        file.type === "image/heic" ||
+        file.type === "image/heif") {
+      setIsConverting(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch("/api/convert-heic", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error("HEIC変換に失敗しました");
+        }
+
+        const data = await response.json();
+        setUserImage(data.base64);
+        setPreviewUrl(data.base64);
+      } catch {
+        setError("画像の変換に失敗しました。別の画像をお試しください。");
+      } finally {
+        setIsConverting(false);
+      }
+      return;
+    }
+
+    // 通常の画像
     const reader = new FileReader();
     reader.onload = (e) => {
       setUserImage(e.target?.result as string);
       setPreviewUrl(e.target?.result as string);
-      setGeneratedImage(null);
-      setError(null);
     };
     reader.readAsDataURL(file);
   }, []);
@@ -88,6 +133,7 @@ export default function Home() {
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       setGeneratedImage(url);
+      setGeneratedBlob(blob);
     } catch {
       setError("画像の生成中にエラーが発生しました");
     } finally {
@@ -95,9 +141,31 @@ export default function Home() {
     }
   };
 
-  const handleDownload = () => {
-    if (!generatedImage) return;
+  const handleDownload = async () => {
+    if (!generatedImage || !generatedBlob) return;
 
+    // Web Share APIが使える場合（主にiPhone）は共有メニューを表示
+    if (canShare && navigator.canShare) {
+      try {
+        const file = new File([generatedBlob], "techgala_image.jpg", { type: "image/jpeg" });
+        
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: "TechGALA",
+          });
+          return;
+        }
+      } catch (err) {
+        // ユーザーがキャンセルした場合は何もしない
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
+        }
+        // 共有に失敗した場合は通常のダウンロードにフォールバック
+      }
+    }
+
+    // 通常のダウンロード
     const link = document.createElement("a");
     link.href = generatedImage;
     link.download = "techgala_image.jpg";
@@ -137,11 +205,18 @@ export default function Home() {
     <main className="min-h-screen py-8 px-4">
       <div className="max-w-4xl mx-auto">
         <header className="text-center mb-12 animate-in">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-[var(--primary)] to-[var(--accent)] bg-clip-text text-transparent">
-            TechGALA
-          </h1>
+          <div className="flex justify-center mb-4">
+            <Image
+              src="/logo.png"
+              alt="TechGALA"
+              width={280}
+              height={80}
+              className="h-16 md:h-20 w-auto"
+              priority
+            />
+          </div>
           <p className="text-lg text-gray-400">
-            あなたの写真でオリジナル画像を作成しよう
+            TechGALAに参加する気持ちを発信しよう！
           </p>
         </header>
 
@@ -163,7 +238,12 @@ export default function Home() {
               onDragLeave={handleDragLeave}
               onClick={() => fileInputRef.current?.click()}
             >
-              {previewUrl ? (
+              {isConverting ? (
+                <div className="text-center">
+                  <div className="animate-spin w-10 h-10 border-4 border-[var(--primary)] border-t-transparent rounded-full mx-auto mb-4"></div>
+                  <p className="text-gray-400">画像を変換中...</p>
+                </div>
+              ) : previewUrl ? (
                 <img
                   src={previewUrl}
                   alt="プレビュー"
@@ -173,10 +253,10 @@ export default function Home() {
                 <div>
                   <div className="text-5xl mb-4">📸</div>
                   <p className="text-gray-400 mb-2">
-                    クリックまたはドラッグ&ドロップ
+                    タップして写真を選択
                   </p>
                   <p className="text-sm text-gray-500">
-                    1000×1000pxにクロップされます
+                    HEIC・JPG・PNG対応
                   </p>
                 </div>
               )}
@@ -185,7 +265,7 @@ export default function Home() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -193,12 +273,13 @@ export default function Home() {
               }}
             />
 
-            {previewUrl && (
+            {previewUrl && !isConverting && (
               <button
                 onClick={() => {
                   setUserImage(null);
                   setPreviewUrl(null);
                   setGeneratedImage(null);
+                  setGeneratedBlob(null);
                 }}
                 className="w-full mt-4 btn-secondary"
               >
@@ -220,7 +301,7 @@ export default function Home() {
                 />
 
                 <button onClick={handleDownload} className="w-full btn-primary mb-4">
-                  💾 ダウンロード
+                  📲 {canShare ? "写真を保存" : "ダウンロード"}
                 </button>
 
                 <div className="grid grid-cols-2 gap-3">
