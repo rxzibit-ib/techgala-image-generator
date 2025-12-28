@@ -16,6 +16,57 @@ interface ImageSettings {
   outputHeight: number;
 }
 
+// 画像を圧縮・リサイズする関数
+const compressImage = (file: File | Blob, maxSize: number = 1500): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement("img");
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      // 最大サイズにリサイズ
+      if (width > height) {
+        if (width > maxSize) {
+          height = (height * maxSize) / width;
+          width = maxSize;
+        }
+      } else {
+        if (height > maxSize) {
+          width = (width * maxSize) / height;
+          height = maxSize;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas context not available"));
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // JPEG形式で圧縮（品質80%）
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+      resolve(dataUrl);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("画像の読み込みに失敗しました"));
+    };
+
+    img.src = url;
+  });
+};
+
 export default function Home() {
   const [settings, setSettings] = useState<ImageSettings | null>(null);
   const [userImage, setUserImage] = useState<string | null>(null);
@@ -54,14 +105,14 @@ export default function Home() {
     setError(null);
     setGeneratedImage(null);
     setGeneratedBlob(null);
+    setIsConverting(true);
 
-    // HEIC/HEIFの場合はサーバーで変換
-    if (file.name.toLowerCase().endsWith(".heic") || 
-        file.name.toLowerCase().endsWith(".heif") ||
-        file.type === "image/heic" ||
-        file.type === "image/heif") {
-      setIsConverting(true);
-      try {
+    try {
+      // HEIC/HEIFの場合はサーバーで変換
+      if (file.name.toLowerCase().endsWith(".heic") || 
+          file.name.toLowerCase().endsWith(".heif") ||
+          file.type === "image/heic" ||
+          file.type === "image/heif") {
         const formData = new FormData();
         formData.append("file", file);
 
@@ -75,23 +126,23 @@ export default function Home() {
         }
 
         const data = await response.json();
-        setUserImage(data.base64);
-        setPreviewUrl(data.base64);
-      } catch {
-        setError("画像の変換に失敗しました。別の画像をお試しください。");
-      } finally {
-        setIsConverting(false);
+        // 変換後の画像をさらに圧縮
+        const blob = await fetch(data.base64).then(r => r.blob());
+        const compressed = await compressImage(blob, 1500);
+        setUserImage(compressed);
+        setPreviewUrl(compressed);
+      } else {
+        // 通常の画像は圧縮してからセット
+        const compressed = await compressImage(file, 1500);
+        setUserImage(compressed);
+        setPreviewUrl(compressed);
       }
-      return;
+    } catch (err) {
+      console.error("Image processing error:", err);
+      setError("画像の処理に失敗しました。別の画像をお試しください。");
+    } finally {
+      setIsConverting(false);
     }
-
-    // 通常の画像
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setUserImage(e.target?.result as string);
-      setPreviewUrl(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
   }, []);
 
   const handleDrop = useCallback(
@@ -127,15 +178,17 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error("画像生成に失敗しました");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "画像生成に失敗しました");
       }
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       setGeneratedImage(url);
       setGeneratedBlob(blob);
-    } catch {
-      setError("画像の生成中にエラーが発生しました");
+    } catch (err) {
+      console.error("Generation error:", err);
+      setError(err instanceof Error ? err.message : "画像の生成中にエラーが発生しました");
     } finally {
       setIsLoading(false);
     }
@@ -241,7 +294,7 @@ export default function Home() {
               {isConverting ? (
                 <div className="text-center">
                   <div className="animate-spin w-10 h-10 border-4 border-[var(--primary)] border-t-transparent rounded-full mx-auto mb-4"></div>
-                  <p className="text-gray-400">画像を変換中...</p>
+                  <p className="text-gray-400">画像を処理中...</p>
                 </div>
               ) : previewUrl ? (
                 <img
