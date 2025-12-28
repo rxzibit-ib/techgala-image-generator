@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TechGALA Image Generator
 
-## Getting Started
+TechGALAイベント用の画像ジェネレーターです。ユーザーがアップロードした画像を、管理者が設定したテンプレートと合成してオリジナル画像を作成できます。
 
-First, run the development server:
+## 機能
+
+### ユーザー向け
+- 📷 画像のアップロード（ドラッグ&ドロップ対応）
+- 🖼️ 1000×1000pxへの自動クロップ・リサイズ
+- ✨ テンプレートと合成した画像の生成（1200×1500px JPG）
+- 💾 生成画像のダウンロード
+- 📱 SNS共有ボタン（X/Twitter、Facebook）
+
+### 管理者向け（認証必要）
+- 🎨 背景画像（レイヤー1）のアップロード
+- ✨ 装飾画像（レイヤー3）のアップロード
+- 📐 ユーザー画像の配置位置・サイズ設定
+- 👁️ 配置プレビュー
+
+## 技術スタック
+
+- **フレームワーク**: Next.js 16 (App Router)
+- **画像処理**: Sharp（無料・高速）
+- **認証**: NextAuth.js
+- **画像ストレージ**: Vercel Blob
+- **スタイリング**: Tailwind CSS
+- **ホスティング**: Vercel
+
+## セットアップ
+
+### ローカル開発
 
 ```bash
+# 依存関係のインストール
+npm install
+
+# 開発サーバー起動
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 環境変数
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`.env.local`ファイルに以下を設定：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+# NextAuth設定（本番環境では安全なキーを生成）
+AUTH_SECRET=your-secret-key-here
 
-## Learn More
+# 管理者認証情報
+ADMIN_ID=admin
+ADMIN_PASSWORD=techgala2025
 
-To learn more about Next.js, take a look at the following resources:
+# Vercel Blob（Vercelにデプロイ後、自動設定）
+BLOB_READ_WRITE_TOKEN=
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Vercelへのデプロイ
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 1. GitHubにプッシュ
 
-## Deploy on Vercel
+```bash
+git add .
+git commit -m "Initial commit"
+git push origin main
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Vercelプロジェクト作成
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. [Vercel](https://vercel.com)にアクセス
+2. "Add New Project" → GitHubリポジトリを選択
+3. "Deploy"をクリック
+
+### 3. Vercel Blobの設定
+
+1. Vercelダッシュボードでプロジェクトを選択
+2. "Storage"タブをクリック
+3. "Create Database" → "Blob"を選択
+4. 名前を入力して作成
+5. 自動的に`BLOB_READ_WRITE_TOKEN`が設定されます
+
+### 4. 環境変数の設定
+
+1. "Settings" → "Environment Variables"
+2. 以下を追加：
+   - `AUTH_SECRET`: `openssl rand -base64 32`で生成した値
+   - `ADMIN_ID`: 管理者ID
+   - `ADMIN_PASSWORD`: 管理者パスワード
+
+### 5. 再デプロイ
+
+環境変数を追加後、"Deployments"から最新のデプロイを"Redeploy"
+
+## 使い方
+
+### 管理者
+
+1. `/admin/login`にアクセス
+2. ID・パスワードでログイン
+3. 背景画像（1200×1500px推奨）をアップロード
+4. 装飾画像（透過PNG、1200×1500px推奨）をアップロード
+5. ユーザー画像の配置位置を設定
+6. 設定を保存
+
+### ユーザー
+
+1. トップページにアクセス
+2. 画像をアップロード
+3. 「画像を生成」をクリック
+4. ダウンロードまたはSNS共有
+
+## レイヤー構成
+
+```
+┌─────────────────────┐
+│   レイヤー3（装飾）    │  ← 管理者設定
+├─────────────────────┤
+│  レイヤー2（ユーザー）  │  ← ユーザーアップロード
+├─────────────────────┤
+│   レイヤー1（背景）    │  ← 管理者設定
+└─────────────────────┘
+```
+
+## プライバシー
+
+- ユーザーがアップロードした画像はサーバーに保存されません
+- 画像生成後、即座に破棄されます
+
+## ライセンス
+
+MIT
